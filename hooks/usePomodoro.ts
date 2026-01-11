@@ -83,7 +83,7 @@ export const usePomodoro = () => {
           setTimeLeft(0);
           setIsActive(false);
           endTimeRef.current = null;
-          triggerHaptic('success');
+          triggerHaptic('alarm'); // Trigger the longer vibration pattern
           playTimerCompleteSound(); // Play the ring
           
           // Auto-reset after ringing is over (approx 2s) + 1 second wait = 3000ms
