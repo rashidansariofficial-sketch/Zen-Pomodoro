@@ -54,7 +54,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
       {/* Interactive area wrapper */}
       <motion.button
         onClick={onClick}
-        className="relative flex items-center justify-center rounded-full outline-none focus:outline-none select-none touch-manipulation group"
+        className="relative flex items-center justify-center rounded-full outline-none focus:outline-none select-none touch-manipulation group transform-gpu"
         whileTap={{ scale: 0.95 }}
         // Animation states: Active (Breathing), Done (Ringing/Shaking), Paused/Idle (Normal)
         animate={
@@ -106,7 +106,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
             r={normalizedRadius}
             cx={radius}
             cy={radius}
-            className={`transition-colors duration-500 ease-in-out ${
+            className={`transition-colors duration-500 ease-in-out transform-gpu ${
               isActive 
                 ? 'text-white' 
                 : timeLeft === 0 
@@ -145,7 +145,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
         {/* Breathing Halo effect when active */}
         {isActive && (
             <motion.div
-                className="absolute -inset-4 rounded-full border border-white/5 pointer-events-none"
+                className="absolute -inset-4 rounded-full border border-white/5 pointer-events-none transform-gpu"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ scale: [1, 1.1, 1], opacity: [0, 0.4, 0] }}
                 transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
@@ -155,7 +155,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
         {/* Subtle Ringing Ripple when Done */}
         {!isActive && timeLeft === 0 && (
              <motion.div
-                className="absolute -inset-4 rounded-full border border-white/10 pointer-events-none"
+                className="absolute -inset-4 rounded-full border border-white/10 pointer-events-none transform-gpu"
                 initial={{ opacity: 0, scale: 1 }}
                 animate={{ scale: [1, 1.2], opacity: [0.5, 0] }}
                 transition={{ repeat: Infinity, duration: 1.5, ease: "easeOut" }}

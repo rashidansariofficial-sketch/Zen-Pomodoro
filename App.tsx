@@ -95,16 +95,20 @@ const App: React.FC = () => {
         <div className="h-6 w-full" /> 
       </footer>
 
-      {/* Background Ambience (Breathing Effect) */}
+      {/* Background Ambience (Breathing Effect) - Optimized */}
       <div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center">
+         {/* Replaced heavy blur-[100px] with a radial gradient which is much cheaper for the GPU to render */}
          <motion.div 
-            className="w-[500px] h-[500px] bg-zinc-800/30 rounded-full blur-[100px]"
+            className="w-[600px] h-[600px] rounded-full"
+            style={{
+                background: 'radial-gradient(circle, rgba(39, 39, 42, 0.25) 0%, rgba(9, 9, 11, 0) 70%)'
+            }}
             animate={isActive ? {
                 scale: [1, 1.2, 1],
-                opacity: [0.3, 0.6, 0.3],
+                opacity: [0.6, 1, 0.6], 
             } : {
                 scale: 1,
-                opacity: 0.2
+                opacity: 0.4
             }}
             transition={{
                 duration: 4,
