@@ -1,0 +1,5 @@
+{
+  "name": "ZenPomodoro",
+  "description": "A minimal, gesture-driven Pomodoro timer with a focus on clean aesthetics and fluid interactions.",
+  "requestFramePermissions": []
+}
