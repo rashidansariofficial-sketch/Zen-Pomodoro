@@ -73,6 +73,8 @@ export const usePomodoro = () => {
              endTimeRef.current = Date.now() + timeLeft * 1000;
         }
 
+      // REDUCED FREQUENCY: 100ms -> 1000ms
+      // This allows the CPU to sleep between seconds, reducing device heat significantly.
       interval = window.setInterval(() => {
         if (!endTimeRef.current) return;
         
@@ -83,20 +85,22 @@ export const usePomodoro = () => {
           setTimeLeft(0);
           setIsActive(false);
           endTimeRef.current = null;
-          triggerHaptic('alarm'); // Trigger the longer vibration pattern
-          playTimerCompleteSound(); // Play the ring
+          triggerHaptic('alarm');
+          playTimerCompleteSound(); 
           
-          // Auto-reset after ringing is over (approx 2s) + 1 second wait = 3000ms
           autoResetTimeoutRef.current = window.setTimeout(() => {
               setTimeLeft(MODES[mode].duration);
           }, 3000);
 
         } else {
-          setTimeLeft(remaining);
+          // Only update state if the second has actually changed to prevent redundant renders
+          setTimeLeft(prev => {
+            if (prev !== remaining) return remaining;
+            return prev;
+          });
         }
-      }, 100); 
+      }, 1000); 
     } else {
-       // When paused, clear the interval
        endTimeRef.current = null;
     }
 
@@ -105,12 +109,10 @@ export const usePomodoro = () => {
     };
   }, [isActive, timeLeft, mode]);
 
-  // Cleanup timeouts on unmount
   useEffect(() => {
       return () => clearAutoReset();
   }, []);
 
-  // Derived progress (0 to 1)
   const progress = 1 - timeLeft / MODES[mode].duration;
 
   return {
