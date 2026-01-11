@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TimerMode, MODES } from '../types';
+import { TimerMode, TimerConfig } from '../types';
 import { triggerHaptic } from '../utils/haptics';
 import { playTimerCompleteSound, initAudio } from '../utils/sound';
 
-export const usePomodoro = () => {
+export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
   const [mode, setMode] = useState<TimerMode>(TimerMode.FOCUS);
-  const [timeLeft, setTimeLeft] = useState(MODES[TimerMode.FOCUS].duration);
+  const [timeLeft, setTimeLeft] = useState(config[TimerMode.FOCUS].duration);
   const [isActive, setIsActive] = useState(false);
   
   // Use a ref to track the expected end time to correct for drift
@@ -25,16 +25,16 @@ export const usePomodoro = () => {
     clearAutoReset();
     setIsActive(false);
     setMode(newMode);
-    setTimeLeft(MODES[newMode].duration);
+    setTimeLeft(config[newMode].duration);
     triggerHaptic('soft');
-  }, []);
+  }, [config]);
 
   const toggleTimer = useCallback(() => {
     clearAutoReset();
     
     if (timeLeft === 0) {
         // Restart logic if timer finished and user manually taps before auto-reset
-        setTimeLeft(MODES[mode].duration);
+        setTimeLeft(config[mode].duration);
         setIsActive(true);
         triggerHaptic('medium');
         initAudio(); // Prepare audio
@@ -54,15 +54,24 @@ export const usePomodoro = () => {
       endTimeRef.current = null;
       triggerHaptic('soft');
     }
-  }, [isActive, mode, timeLeft]);
+  }, [isActive, mode, timeLeft, config]);
 
   const resetTimer = useCallback(() => {
     clearAutoReset();
     setIsActive(false);
-    setTimeLeft(MODES[mode].duration);
+    setTimeLeft(config[mode].duration);
     endTimeRef.current = null;
     triggerHaptic('medium');
-  }, [mode]);
+  }, [mode, config]);
+
+  // Handle configuration changes (e.g. settings update)
+  useEffect(() => {
+    if (!isActive) {
+      // If the timer is idle, update the display to match the new duration
+      // This ensures if user changes 25 -> 30, they see 30 immediately.
+      setTimeLeft(config[mode].duration);
+    }
+  }, [config, mode, isActive]);
 
   useEffect(() => {
     let interval: number;
@@ -74,7 +83,6 @@ export const usePomodoro = () => {
         }
 
       // REDUCED FREQUENCY: 100ms -> 1000ms
-      // This allows the CPU to sleep between seconds, reducing device heat significantly.
       interval = window.setInterval(() => {
         if (!endTimeRef.current) return;
         
@@ -89,7 +97,7 @@ export const usePomodoro = () => {
           playTimerCompleteSound(); 
           
           autoResetTimeoutRef.current = window.setTimeout(() => {
-              setTimeLeft(MODES[mode].duration);
+              setTimeLeft(config[mode].duration);
           }, 3000);
 
         } else {
@@ -107,13 +115,13 @@ export const usePomodoro = () => {
     return () => {
         clearInterval(interval);
     };
-  }, [isActive, timeLeft, mode]);
+  }, [isActive, timeLeft, mode, config]);
 
   useEffect(() => {
       return () => clearAutoReset();
   }, []);
 
-  const progress = 1 - timeLeft / MODES[mode].duration;
+  const progress = 1 - timeLeft / config[mode].duration;
 
   return {
     mode,

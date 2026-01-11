@@ -5,21 +5,22 @@ interface TimerDisplayProps {
   timeLeft: number;
   totalTime: number;
   isActive: boolean;
+  isBreathing: boolean;
   onClick: () => void;
 }
 
 // Animated Digit Component
-// Uses a fixed width container to prevent layout shifts while the number slides/fades
+// Optimization: Removed `filter: blur()` to reduce GPU composite cost on every second tick
 const Digit = ({ value }: { value: string }) => {
   return (
     <div className="relative w-[0.6em] h-[1.2em] flex items-center justify-center overflow-hidden">
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.span
           key={value}
-          initial={{ y: '-40%', opacity: 0, filter: 'blur(3px)' }}
-          animate={{ y: '0%', opacity: 1, filter: 'blur(0px)' }}
-          exit={{ y: '40%', opacity: 0, filter: 'blur(3px)' }}
-          transition={{ type: "spring", stiffness: 400, damping: 25, mass: 1 }}
+          initial={{ y: '-40%', opacity: 0 }}
+          animate={{ y: '0%', opacity: 1 }}
+          exit={{ y: '40%', opacity: 0 }}
+          transition={{ type: "spring", stiffness: 400, damping: 28, mass: 1 }}
           className="absolute inset-0 flex items-center justify-center"
         >
           {value}
@@ -29,7 +30,7 @@ const Digit = ({ value }: { value: string }) => {
   );
 };
 
-const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActive, onClick }) => {
+const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActive, isBreathing, onClick }) => {
   
   const formatDigits = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -55,21 +56,22 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
       <motion.button
         onClick={onClick}
         className="relative flex items-center justify-center rounded-full outline-none focus:outline-none select-none touch-manipulation group transform-gpu"
+        style={{ willChange: "transform" }}
         whileTap={{ scale: 0.95 }}
-        // Animation states: Active (Breathing), Done (Ringing/Shaking), Paused/Idle (Normal)
+        // Animation states: Breathing, Done (Ringing/Shaking), or Static
         animate={
-            isActive 
+            isBreathing 
                 ? { scale: [1, 1.02, 1] } 
                 : timeLeft === 0
                     ? { rotate: [0, -3, 3, -3, 3, 0] }
                     : { scale: 1 }
         }
         transition={
-            isActive 
+            isBreathing 
                 ? { repeat: Infinity, duration: 4, ease: "easeInOut" }
                 : timeLeft === 0
                     ? { repeat: 4, duration: 0.5, ease: "easeInOut", repeatDelay: 1 }
-                    : { type: "spring", stiffness: 300, damping: 20 }
+                    : { duration: 0.8, ease: "easeOut" } // Smooth return to normal scale
         }
         aria-label={isActive ? "Pause Timer" : "Start Timer"}
       >
@@ -142,15 +144,23 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
           </span>
         </div>
         
-        {/* Breathing Halo effect when active */}
-        {isActive && (
-            <motion.div
-                className="absolute -inset-4 rounded-full border border-white/5 pointer-events-none transform-gpu"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ scale: [1, 1.1, 1], opacity: [0, 0.4, 0] }}
-                transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
-            />
-        )}
+        {/* Breathing Halo effect - only visible during breathing phase */}
+        <motion.div
+            className="absolute -inset-4 rounded-full border border-white/5 pointer-events-none transform-gpu"
+            style={{ willChange: "transform, opacity" }}
+            animate={isBreathing ? {
+                scale: [1, 1.1, 1],
+                opacity: [0, 0.4, 0]
+            } : {
+                scale: 1,
+                opacity: 0
+            }}
+            transition={isBreathing ? {
+                repeat: Infinity, duration: 4, ease: "easeInOut"
+            } : {
+                duration: 1.5, ease: "easeOut" // Smooth fade out
+            }}
+        />
         
         {/* Subtle Ringing Ripple when Done */}
         {!isActive && timeLeft === 0 && (

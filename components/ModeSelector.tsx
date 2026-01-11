@@ -1,29 +1,29 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
-import { TimerMode, MODES } from '../types';
+import { TimerMode, TimerConfig } from '../types';
 
 interface ModeSelectorProps {
+  modes: TimerConfig[];
   currentMode: TimerMode;
   onSwitch: (mode: TimerMode) => void;
 }
 
-const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onSwitch }) => {
-  const modesList = Object.values(MODES);
+const ModeSelector: React.FC<ModeSelectorProps> = ({ modes, currentMode, onSwitch }) => {
   
   // We use this to detect simple swipe gestures on the container
   const handleDragEnd = (event: any, info: any) => {
     const threshold = 50;
-    const currentIndex = modesList.findIndex(m => m.mode === currentMode);
+    const currentIndex = modes.findIndex(m => m.mode === currentMode);
     
     if (info.offset.x > threshold) {
       // Swiped Right -> Previous Mode
       if (currentIndex > 0) {
-        onSwitch(modesList[currentIndex - 1].mode);
+        onSwitch(modes[currentIndex - 1].mode);
       }
     } else if (info.offset.x < -threshold) {
       // Swiped Left -> Next Mode
-      if (currentIndex < modesList.length - 1) {
-        onSwitch(modesList[currentIndex + 1].mode);
+      if (currentIndex < modes.length - 1) {
+        onSwitch(modes[currentIndex + 1].mode);
       }
     }
   };
@@ -39,7 +39,7 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onSwitch }) =>
         onDragEnd={handleDragEnd}
       >
         <div className="flex justify-between items-center relative z-10">
-          {modesList.map((m) => {
+          {modes.map((m) => {
             const isSelected = currentMode === m.mode;
             return (
               <button
