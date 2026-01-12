@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw, Settings } from 'lucide-react';
 
 import { usePomodoro } from './hooks/usePomodoro';
+import { useLocalStorage } from './hooks/useLocalStorage';
 import TimerDisplay from './components/TimerDisplay';
 import ModeSelector from './components/ModeSelector';
 import SettingsView from './components/SettingsView';
@@ -12,13 +13,12 @@ const App: React.FC = () => {
   // App State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-  // Settings State
-  const [focusDuration, setFocusDuration] = useState(25); // Minutes
-  const [shortBreakDuration, setShortBreakDuration] = useState(5); // Minutes
-  const [longBreakDuration, setLongBreakDuration] = useState(15); // Minutes
-  const [demoDuration, setDemoDuration] = useState(50); // Seconds
-  
-  const [isDemoEnabled, setIsDemoEnabled] = useState(false);
+  // Settings State - Now Persistent
+  const [focusDuration, setFocusDuration] = useLocalStorage('zen-focus', 25);
+  const [shortBreakDuration, setShortBreakDuration] = useLocalStorage('zen-short-break', 5);
+  const [longBreakDuration, setLongBreakDuration] = useLocalStorage('zen-long-break', 15);
+  const [demoDuration, setDemoDuration] = useLocalStorage('zen-demo-duration', 50);
+  const [isDemoEnabled, setIsDemoEnabled] = useLocalStorage('zen-demo-enabled', false);
 
   // Derive current configurations based on settings
   const currentConfig = useMemo<Record<TimerMode, TimerConfig>>(() => ({
