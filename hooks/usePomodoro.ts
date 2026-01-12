@@ -59,14 +59,15 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
   });
   
   // Use a ref to track the expected end time to correct for drift
-  const endTimeRef = useRef<number | null>(() => {
+  // Fix: Immediately invoke the function to pass the value to useRef, as useRef does not accept a factory function
+  const endTimeRef = useRef<number | null>((() => {
       const session = getStoredSession();
       if (session?.isActive && session?.endTime) {
           const remaining = Math.ceil((session.endTime - Date.now()) / 1000);
           if (remaining > 0) return session.endTime;
       }
       return null;
-  });
+  })());
   
   // Track the auto-reset timeout to clear it if user interacts
   const autoResetTimeoutRef = useRef<number | null>(null);
@@ -157,37 +158,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
   // Handle configuration changes (e.g. settings update)
   useEffect(() => {
     if (!isActive) {
-      // Only update if the stored timeLeft matches the *old* duration of this mode
-      // This is tricky. Simplified: If inactive, and we are not in a "paused mid-way" state, update.
-      // For now, we trust the persistence logic above. 
-      // If user changes setting 25->30, and we are at 25:00, we want 30:00.
-      // If we are at 20:00 (paused), we probably want to keep 20:00? 
-      // Let's adopt a simple rule: if timeLeft equals the *previous* default, update it? 
-      // Actually, standard behavior: if Paused, don't change. If "Fresh", change.
-      // Determining "Fresh" is hard.
-      // Let's just force update if timeLeft equals the OLD duration? No, we don't know old duration.
-      
-      // Safe bet: If the timer is NOT active, and the current timeLeft matches the *previous* config for this mode (implicit), update?
-      // Actually, let's just NOT auto-update timeLeft on config change if it looks like a custom paused time.
-      // But if the user just opened settings and changed 25 to 30, they expect 30.
-      
-      // Workaround: We'll update timeLeft if it seems to be a full duration (even if old).
-      // Or simply: If we are not active, sync to new duration. 
-      // The only downside is losing "paused" progress if you change settings. This is acceptable.
-       const session = getStoredSession();
-       // Only override if we aren't mid-session
-       const isMidSession = session && session.mode === mode && session.timeLeft !== config[mode].duration && session.timeLeft !== 0; // rough check
-       
-       // Actually, let's just respect the current config if we aren't active. 
-       // The user interaction in SettingsView implies intent.
-       // But we need to avoid the loop where `config` is recreated every render. `currentConfig` in App.tsx is Memoized.
-       // We only want to setTimeLeft if `config[mode].duration` CHANGED from what `timeLeft` currently is?
-       // No, `timeLeft` counts down.
-       
-       // Let's rely on the user to hit Reset if they want the new time, OR:
-       // If the timer is at "Start" state (config check difficult), update.
-       // Let's just leave timeLeft alone unless Reset is clicked. This is safer.
-       // User changes 25->30. Timer says 25:00. User clicks Reset -> 30:00. That's fine.
+       // See notes in previous version about why we keep this minimal
     }
   }, [config, mode, isActive]);
 
@@ -230,10 +201,6 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
             if (prev !== remaining) return remaining;
             return prev;
           });
-          
-          // Optional: Persist periodically (e.g. every 5s) to ensure crash recovery?
-          // Not strictly necessary if we have endTime, but helpful for "timeLeft" display if we load while paused?
-          // No, if we load while active, we calculate from endTime. We don't need accurate timeLeft in DB.
         }
       }, 1000); 
     } else {

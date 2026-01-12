@@ -52,14 +52,14 @@ const App: React.FC = () => {
   const isBreathing = isActive && elapsedTime < 25;
 
   return (
-    <div className="min-h-screen bg-black overflow-hidden relative selection:bg-zinc-800">
+    <div className="fixed inset-0 w-full h-[100dvh] bg-black overflow-hidden selection:bg-zinc-800 touch-none">
       
       {/* Main App Content Wrapper */}
       <motion.div
-        className="h-[100dvh] w-full flex flex-col items-center justify-between bg-zinc-950 absolute inset-0 origin-top"
+        className="h-full w-full flex flex-col items-center justify-between bg-zinc-950 absolute inset-0"
       >
         {/* Header / Top Bar */}
-        <div className="h-20 w-full flex items-center justify-between px-6 z-20 shrink-0">
+        <div className="h-16 w-full flex items-center justify-between px-6 z-20 shrink-0">
             <span className="text-xs font-semibold tracking-[0.2em] uppercase text-zinc-500">Zen Pomodoro</span>
             
             {/* Settings Button */}
@@ -73,10 +73,10 @@ const App: React.FC = () => {
         </div>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col items-center justify-center w-full max-w-lg relative z-10">
+        <main className="flex-1 flex flex-col items-center justify-center w-full max-w-lg relative z-10 min-h-0">
             
-            {/* Timer */}
-            <div className="mb-12">
+            {/* Timer - Scaled slightly for smaller screens to ensure fit */}
+            <div className="flex-none transform scale-90 sm:scale-100 transition-transform duration-300">
                 <TimerDisplay 
                     timeLeft={timeLeft} 
                     totalTime={totalDuration}
@@ -86,68 +86,65 @@ const App: React.FC = () => {
                 />
             </div>
 
-            {/* Reset Button */}
-            <AnimatePresence>
-            {/* Show reset if paused or finished (not active) and time is not full */}
-            {(!isActive && timeLeft !== totalDuration) && (
-                <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                onClick={resetTimer}
-                className="group flex items-center gap-2 px-6 py-2 rounded-full border border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:border-zinc-600 transition-all duration-300"
-                >
-                <RotateCcw size={14} className="group-hover:-rotate-180 transition-transform duration-500" />
-                <span className="text-xs uppercase tracking-wider font-semibold">Reset</span>
-                </motion.button>
-            )}
-            {/* Placeholder to prevent layout jump when button is hidden */}
-            {(isActive || timeLeft === totalDuration) && (
-                <div className="h-[34px]" aria-hidden="true" />
-            )}
-            </AnimatePresence>
+            {/* Reset Button Container - Fixed height reserved to prevent layout shift */}
+            <div className="h-12 mt-6 flex items-center justify-center w-full">
+                <AnimatePresence>
+                {/* Show reset if paused or finished (not active) and time is not full */}
+                {(!isActive && timeLeft !== totalDuration) && (
+                    <motion.button
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    onClick={resetTimer}
+                    className="group flex items-center gap-2 px-6 py-2 rounded-full border border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:border-zinc-600 transition-all duration-300 bg-zinc-950/50 backdrop-blur-sm"
+                    >
+                    <RotateCcw size={14} className="group-hover:-rotate-180 transition-transform duration-500" />
+                    <span className="text-xs uppercase tracking-wider font-semibold">Reset</span>
+                    </motion.button>
+                )}
+                </AnimatePresence>
+            </div>
 
         </main>
 
         {/* Bottom Controls */}
-        <footer className="w-full flex flex-col items-center mb-safe-bottom z-10 min-h-[120px] justify-end shrink-0">
-            <AnimatePresence>
-            {!isActive && (
-                <motion.div
-                className="w-full flex justify-center"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                transition={{ duration: 0.4, ease: "easeInOut" }}
-                >
-                <ModeSelector 
-                    modes={availableModes}
-                    currentMode={mode} 
-                    onSwitch={switchMode} 
-                />
-                </motion.div>
-            )}
-            </AnimatePresence>
-            
-            {/* Active State Indicator (Optional text instead of controls) */}
-            <AnimatePresence>
-                {isActive && (
+        <footer className="w-full flex flex-col items-center z-10 shrink-0 pb-safe-bottom">
+            <div className="min-h-[100px] w-full flex flex-col justify-end items-center pb-4">
+                <AnimatePresence>
+                {!isActive && (
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute bottom-10 text-xs tracking-widest text-zinc-600 uppercase font-medium pointer-events-none"
+                    className="w-full flex justify-center"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
                     >
-                        Focus Mode Active
+                    <ModeSelector 
+                        modes={availableModes}
+                        currentMode={mode} 
+                        onSwitch={switchMode} 
+                    />
                     </motion.div>
                 )}
-            </AnimatePresence>
-
-            {/* Safe area padding for mobile home indicators */}
-            <div className="h-6 w-full" /> 
+                </AnimatePresence>
+                
+                {/* Active State Indicator */}
+                <AnimatePresence>
+                    {isActive && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="h-[52px] flex items-center text-xs tracking-widest text-zinc-600 uppercase font-medium pointer-events-none"
+                        >
+                            Focus Mode Active
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
         </footer>
         
-        {/* Background Ambience (Breathing Effect) - Optimized & Limited Duration */}
+        {/* Background Ambience (Breathing Effect) */}
         <div className="absolute inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden">
              <motion.div 
                 className="w-[600px] h-[600px] rounded-full"
@@ -170,7 +167,7 @@ const App: React.FC = () => {
                         scale: 1,
                         opacity: 0.4,
                         transition: {
-                            duration: 2, // Slow, smooth transition to idle state
+                            duration: 2,
                             ease: "easeInOut"
                         }
                     }

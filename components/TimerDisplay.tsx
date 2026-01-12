@@ -51,7 +51,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
   const strokeDashoffset = circumference - progress * circumference;
 
   return (
-    <div className="relative flex items-center justify-center p-8">
+    <div className="relative flex items-center justify-center">
       {/* Interactive area wrapper */}
       <motion.button
         onClick={onClick}
