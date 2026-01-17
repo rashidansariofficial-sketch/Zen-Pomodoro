@@ -17,26 +17,38 @@ export const sendNotification = (title: string, body: string) => {
   if (Notification.permission === 'granted') {
     const options: any = {
       body,
-      icon: '/icon.svg', // Ensure this path matches your public folder asset
-      // This pattern triggers the system vibration for the notification
+      icon: '/icon.svg',
+      // Vibration pattern: [vibrate, pause, vibrate, ...]
       vibrate: [200, 100, 200, 100, 200, 100, 400], 
       tag: 'zen-timer-complete',
-      renotify: true, // Vibrates even if an old notification is still there
-      requireInteraction: true, // Keeps notification visible until clicked
+      renotify: true,
+      requireInteraction: true,
     };
 
-    // Attempt to use Service Worker Registration (Standard for PWAs)
-    // This allows the notification to show up more reliably on mobile
+    const showViaWindow = () => new Notification(title, options);
+
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then((registration) => {
-        registration.showNotification(title, options);
-      }).catch((e) => {
-        console.warn("SW notification failed, falling back to window", e);
-        new Notification(title, options);
+      // Race the service worker ready promise against a 500ms timeout
+      // to prevent hanging if the SW isn't active/registered.
+      const swPromise = navigator.serviceWorker.ready.then((registration) => {
+        // Check if there is an active SW to handle the notification
+        if (registration.active) {
+            return registration.showNotification(title, options);
+        }
+        throw new Error('No active service worker');
+      });
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('SW timed out')), 500)
+      );
+
+      Promise.race([swPromise, timeoutPromise]).catch((e) => {
+        // Fallback to standard web notification if SW fails or times out
+        console.warn("Falling back to window notification:", e);
+        showViaWindow();
       });
     } else {
-      // Fallback for non-SW environments
-      new Notification(title, options);
+      showViaWindow();
     }
   }
 };

@@ -50,6 +50,9 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
   const progress = 1 - timeLeft / totalTime;
   const strokeDashoffset = circumference - progress * circumference;
 
+  // Detect reset state to disable animation
+  const isReset = timeLeft === totalTime && !isActive;
+
   return (
     <div className="relative flex items-center justify-center">
       {/* Interactive area wrapper */}
@@ -101,7 +104,8 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeLeft, totalTime, isActi
             initial={{ strokeDashoffset }}
             animate={{ strokeDashoffset }}
             transition={{
-                duration: isActive ? 1 : 0.5,
+                // Immediate snap if resetting, otherwise smooth
+                duration: isActive ? 1 : (isReset ? 0 : 0.5),
                 ease: isActive ? "linear" : "easeOut"
             }}
             strokeLinecap="round"

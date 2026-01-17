@@ -14,11 +14,43 @@ interface StoredSession {
   timestamp: number;
 }
 
+// Worker code as a string to avoid import/bundler issues
+const WORKER_CODE = `
+self.onmessage = function(e) {
+  const { type, payload } = e.data;
+
+  if (type === 'START') {
+    const { endTime } = payload;
+    
+    if (self.timerInterval) {
+      clearInterval(self.timerInterval);
+    }
+
+    self.timerInterval = setInterval(function() {
+      const now = Date.now();
+      const remaining = Math.ceil((endTime - now) / 1000);
+
+      if (remaining <= 0) {
+        self.postMessage({ type: 'COMPLETE' });
+        clearInterval(self.timerInterval);
+        self.timerInterval = null;
+      } else {
+        self.postMessage({ type: 'TICK', timeLeft: remaining });
+      }
+    }, 1000);
+
+  } else if (type === 'STOP') {
+    if (self.timerInterval) {
+      clearInterval(self.timerInterval);
+      self.timerInterval = null;
+    }
+  }
+};
+`;
+
 export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
-  // 1. Lazy Initialization from LocalStorage
-  // We interpret the storage state immediately to set the initial values
-  // This prevents the "flash" of a default state before restoration
-  
+  const workerRef = useRef<Worker | null>(null);
+
   const getStoredSession = (): StoredSession | null => {
     if (typeof window === 'undefined') return null;
     try {
@@ -37,30 +69,28 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
   const [isActive, setIsActive] = useState<boolean>(() => {
     const session = getStoredSession();
     if (!session || !session.isActive || !session.endTime) return false;
-    
-    // Check if the session is still valid (in the future)
     const remaining = Math.ceil((session.endTime - Date.now()) / 1000);
     return remaining > 0;
   });
 
   const [timeLeft, setTimeLeft] = useState<number>(() => {
     const session = getStoredSession();
-    const defaultDuration = config[TimerMode.FOCUS].duration;
+    const defaultDuration = config[TimerMode.FOCUS]?.duration || 1500;
+    
+    // Safety check for config existence
+    if (!config[TimerMode.FOCUS]) return 1500;
 
-    if (!session) return defaultDuration;
+    if (!session) return config[mode]?.duration ?? defaultDuration;
 
     if (session.isActive && session.endTime) {
        const remaining = Math.ceil((session.endTime - Date.now()) / 1000);
        return remaining > 0 ? remaining : 0;
     }
-
-    // If we were paused, return the stored remaining time
-    // But verify it matches the current mode's logic roughly (optional)
-    return typeof session.timeLeft === 'number' ? session.timeLeft : config[session.mode].duration;
+    
+    const modeDuration = config[session.mode]?.duration ?? defaultDuration;
+    return typeof session.timeLeft === 'number' ? session.timeLeft : modeDuration;
   });
   
-  // Use a ref to track the expected end time to correct for drift
-  // Fix: Immediately invoke the function to pass the value to useRef, as useRef does not accept a factory function
   const endTimeRef = useRef<number | null>((() => {
       const session = getStoredSession();
       if (session?.isActive && session?.endTime) {
@@ -70,7 +100,6 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       return null;
   })());
   
-  // Track the auto-reset timeout to clear it if user interacts
   const autoResetTimeoutRef = useRef<number | null>(null);
 
   const clearAutoReset = () => {
@@ -80,7 +109,50 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
     }
   };
 
-  // Helper to persist state
+  // Initialize Worker
+  useEffect(() => {
+    // Create worker from Blob
+    const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    workerRef.current = new Worker(workerUrl);
+    
+    workerRef.current.onmessage = (e) => {
+      const { type, timeLeft: workerTimeLeft } = e.data;
+      
+      if (type === 'TICK') {
+        setTimeLeft(workerTimeLeft);
+      } else if (type === 'COMPLETE') {
+        handleTimerComplete();
+      }
+    };
+
+    // If we mount and state says active, ensure worker is running
+    if (isActive && endTimeRef.current) {
+      workerRef.current.postMessage({ 
+        type: 'START', 
+        payload: { endTime: endTimeRef.current } 
+      });
+    }
+
+    return () => {
+      workerRef.current?.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
+
+  // Sync worker when active state changes
+  useEffect(() => {
+    if (isActive && endTimeRef.current) {
+      workerRef.current?.postMessage({ 
+        type: 'START', 
+        payload: { endTime: endTimeRef.current } 
+      });
+    } else {
+      workerRef.current?.postMessage({ type: 'STOP' });
+    }
+  }, [isActive]);
+
   const persistSession = useCallback((
     currentMode: TimerMode,
     active: boolean,
@@ -96,6 +168,36 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   }, []);
+
+  const handleTimerComplete = useCallback(() => {
+      setTimeLeft(0);
+      setIsActive(false);
+      endTimeRef.current = null;
+      
+      triggerHaptic('alarm');
+      playTimerCompleteSound();
+
+      if (document.visibilityState === 'hidden') {
+        sendNotification('Timer Complete', `${config[mode].label} session finished.`);
+      }
+      
+      persistSession(mode, false, null, 0);
+
+      autoResetTimeoutRef.current = window.setTimeout(() => {
+          // Auto-switch mode logic
+          let nextMode = mode;
+          if (mode === TimerMode.FOCUS) {
+              nextMode = TimerMode.SHORT_BREAK;
+          } else if (mode === TimerMode.SHORT_BREAK || mode === TimerMode.LONG_BREAK || mode === TimerMode.DEMO) {
+              nextMode = TimerMode.FOCUS;
+          }
+          
+          setMode(nextMode);
+          const newDuration = config[nextMode].duration;
+          setTimeLeft(newDuration);
+          persistSession(nextMode, false, null, newDuration);
+      }, 3000);
+  }, [config, mode, persistSession]);
 
   const switchMode = useCallback((newMode: TimerMode) => {
     clearAutoReset();
@@ -114,7 +216,8 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
     clearAutoReset();
     
     if (timeLeft === 0) {
-        // Restart
+        // Restart current mode if manually toggled after finish (before auto-switch)
+        // or if manually reset to 0
         const duration = config[mode].duration;
         setTimeLeft(duration);
         setIsActive(true);
@@ -122,7 +225,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
         
         triggerHaptic('medium');
         initAudio();
-        requestNotificationPermission(); // Ask for permission on interaction
+        requestNotificationPermission();
         persistSession(mode, true, endTimeRef.current, duration);
         return;
     }
@@ -134,7 +237,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       
       triggerHaptic('medium');
       initAudio();
-      requestNotificationPermission(); // Ask for permission on interaction
+      requestNotificationPermission();
       persistSession(mode, true, endTimeRef.current, timeLeft);
     } else {
       // Pause
@@ -158,73 +261,12 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
     persistSession(mode, false, null, duration);
   }, [mode, config, persistSession]);
 
-  // Handle configuration changes (e.g. settings update)
-  useEffect(() => {
-    if (!isActive) {
-       // See notes in previous version about why we keep this minimal
-    }
-  }, [config, mode, isActive]);
-
-  // The Timer Loop
-  useEffect(() => {
-    let interval: number;
-
-    if (isActive && timeLeft > 0) {
-        if (!endTimeRef.current) {
-             endTimeRef.current = Date.now() + timeLeft * 1000;
-        }
-
-      interval = window.setInterval(() => {
-        if (!endTimeRef.current) return;
-        
-        const now = Date.now();
-        const remaining = Math.ceil((endTimeRef.current - now) / 1000);
-
-        if (remaining <= 0) {
-          // Timer Finished
-          setTimeLeft(0);
-          setIsActive(false);
-          endTimeRef.current = null;
-          
-          triggerHaptic('alarm');
-          playTimerCompleteSound();
-
-          // Send notification if app is hidden (background)
-          if (document.visibilityState === 'hidden') {
-            sendNotification('Timer Complete', `${config[mode].label} session finished.`);
-          }
-          
-          // Clear session active state but keep mode
-          persistSession(mode, false, null, 0);
-
-          autoResetTimeoutRef.current = window.setTimeout(() => {
-              const newDuration = config[mode].duration;
-              setTimeLeft(newDuration);
-              persistSession(mode, false, null, newDuration);
-          }, 3000);
-
-        } else {
-          // Tick
-          setTimeLeft(prev => {
-            if (prev !== remaining) return remaining;
-            return prev;
-          });
-        }
-      }, 1000); 
-    } else {
-       endTimeRef.current = null;
-    }
-
-    return () => {
-        clearInterval(interval);
-    };
-  }, [isActive, timeLeft, mode, config, persistSession]);
-
   useEffect(() => {
       return () => clearAutoReset();
   }, []);
 
-  const progress = 1 - timeLeft / config[mode].duration;
+  const duration = config[mode]?.duration || 1500;
+  const progress = 1 - timeLeft / duration;
 
   return {
     mode,
