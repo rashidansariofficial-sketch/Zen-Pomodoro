@@ -1,4 +1,6 @@
 let sharedAudioCtx: AudioContext | null = null;
+let silentOscillator: OscillatorNode | null = null;
+let silentGain: GainNode | null = null;
 
 export const initAudio = () => {
   try {
@@ -15,6 +17,58 @@ export const initAudio = () => {
   } catch (e) {
     console.error("Audio init failed", e);
   }
+};
+
+/**
+ * Toggles a nearly silent oscillator. 
+ * This keeps the AudioContext active on mobile devices when the app is in the background,
+ * preventing the browser from throttling the timer or suspending audio playback.
+ */
+export const toggleSilentAudio = (enable: boolean) => {
+    try {
+        if (enable) {
+            initAudio();
+            if (!sharedAudioCtx) return;
+            
+            // Resume context if suspended (common on mobile)
+            if (sharedAudioCtx.state === 'suspended') {
+                sharedAudioCtx.resume();
+            }
+
+            // If already running, do nothing
+            if (silentOscillator) return; 
+
+            silentOscillator = sharedAudioCtx.createOscillator();
+            silentGain = sharedAudioCtx.createGain();
+
+            silentOscillator.type = 'sine';
+            silentOscillator.frequency.setValueAtTime(440, sharedAudioCtx.currentTime); // Arbitrary freq
+            
+            // Value must be non-zero to prevent browser optimization, but low enough to be inaudible
+            silentGain.gain.setValueAtTime(0.0001, sharedAudioCtx.currentTime); 
+            
+            silentOscillator.connect(silentGain);
+            silentGain.connect(sharedAudioCtx.destination);
+            silentOscillator.start();
+            
+        } else {
+            if (silentOscillator) {
+                try {
+                    silentOscillator.stop();
+                    silentOscillator.disconnect();
+                } catch (e) { /* ignore cleanup errors */ }
+                silentOscillator = null;
+            }
+            if (silentGain) {
+                try {
+                    silentGain.disconnect();
+                } catch (e) { /* ignore cleanup errors */ }
+                silentGain = null;
+            }
+        }
+    } catch (e) {
+        console.error("Silent audio toggle failed", e);
+    }
 };
 
 export const playTimerCompleteSound = () => {

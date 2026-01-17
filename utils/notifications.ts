@@ -18,11 +18,13 @@ export const sendNotification = (title: string, body: string) => {
     const options: any = {
       body,
       icon: '/icon.svg',
-      // Vibration pattern: [vibrate, pause, vibrate, ...]
-      vibrate: [200, 100, 200, 100, 200, 100, 400], 
+      // Aggressive vibration pattern: 
+      // Vibrate 200ms, pause 100ms (repeat x3), then long vibrate 500ms
+      vibrate: [200, 100, 200, 100, 200, 100, 500, 100, 500], 
       tag: 'zen-timer-complete',
       renotify: true,
       requireInteraction: true,
+      silent: false, // Explicitly request sound
     };
 
     const showViaWindow = () => new Notification(title, options);

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { TimerMode, TimerConfig } from '../types';
 import { triggerHaptic } from '../utils/haptics';
-import { playTimerCompleteSound, initAudio } from '../utils/sound';
+import { playTimerCompleteSound, initAudio, toggleSilentAudio } from '../utils/sound';
 import { requestNotificationPermission, sendNotification } from '../utils/notifications';
 
 const SESSION_KEY = 'zen-session-v1';
@@ -109,50 +109,6 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
     }
   };
 
-  // Initialize Worker
-  useEffect(() => {
-    // Create worker from Blob
-    const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    workerRef.current = new Worker(workerUrl);
-    
-    workerRef.current.onmessage = (e) => {
-      const { type, timeLeft: workerTimeLeft } = e.data;
-      
-      if (type === 'TICK') {
-        setTimeLeft(workerTimeLeft);
-      } else if (type === 'COMPLETE') {
-        handleTimerComplete();
-      }
-    };
-
-    // If we mount and state says active, ensure worker is running
-    if (isActive && endTimeRef.current) {
-      workerRef.current.postMessage({ 
-        type: 'START', 
-        payload: { endTime: endTimeRef.current } 
-      });
-    }
-
-    return () => {
-      workerRef.current?.terminate();
-      URL.revokeObjectURL(workerUrl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
-
-  // Sync worker when active state changes
-  useEffect(() => {
-    if (isActive && endTimeRef.current) {
-      workerRef.current?.postMessage({ 
-        type: 'START', 
-        payload: { endTime: endTimeRef.current } 
-      });
-    } else {
-      workerRef.current?.postMessage({ type: 'STOP' });
-    }
-  }, [isActive]);
-
   const persistSession = useCallback((
     currentMode: TimerMode,
     active: boolean,
@@ -174,6 +130,10 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       setIsActive(false);
       endTimeRef.current = null;
       
+      // Stop the silent background audio
+      toggleSilentAudio(false);
+
+      // Play the actual bell sound
       triggerHaptic('alarm');
       playTimerCompleteSound();
 
@@ -184,24 +144,71 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       persistSession(mode, false, null, 0);
 
       autoResetTimeoutRef.current = window.setTimeout(() => {
-          // Auto-switch mode logic
-          let nextMode = mode;
-          if (mode === TimerMode.FOCUS) {
-              nextMode = TimerMode.SHORT_BREAK;
-          } else if (mode === TimerMode.SHORT_BREAK || mode === TimerMode.LONG_BREAK || mode === TimerMode.DEMO) {
-              nextMode = TimerMode.FOCUS;
-          }
-          
-          setMode(nextMode);
-          const newDuration = config[nextMode].duration;
-          setTimeLeft(newDuration);
-          persistSession(nextMode, false, null, newDuration);
+          // Reset logic: Stay on current mode, just reset the time
+          const duration = config[mode].duration;
+          setTimeLeft(duration);
+          persistSession(mode, false, null, duration);
       }, 3000);
   }, [config, mode, persistSession]);
+
+  // Keep a ref to the latest handler to avoid stale closures in the worker callback
+  const handleTimerCompleteRef = useRef(handleTimerComplete);
+  useEffect(() => {
+    handleTimerCompleteRef.current = handleTimerComplete;
+  }, [handleTimerComplete]);
+
+  // Initialize Worker
+  useEffect(() => {
+    // Create worker from Blob
+    const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    workerRef.current = new Worker(workerUrl);
+    
+    workerRef.current.onmessage = (e) => {
+      const { type, timeLeft: workerTimeLeft } = e.data;
+      
+      if (type === 'TICK') {
+        setTimeLeft(workerTimeLeft);
+      } else if (type === 'COMPLETE') {
+        // Use the ref to ensure we call the latest version of the handler with fresh state (mode/config)
+        handleTimerCompleteRef.current();
+      }
+    };
+
+    // If we mount and state says active, ensure worker is running
+    if (isActive && endTimeRef.current) {
+      workerRef.current.postMessage({ 
+        type: 'START', 
+        payload: { endTime: endTimeRef.current } 
+      });
+      // Also ensure silent audio is running if we are active on mount
+      toggleSilentAudio(true);
+    }
+
+    return () => {
+      workerRef.current?.terminate();
+      URL.revokeObjectURL(workerUrl);
+      toggleSilentAudio(false); // Cleanup audio
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
+
+  // Sync worker when active state changes
+  useEffect(() => {
+    if (isActive && endTimeRef.current) {
+      workerRef.current?.postMessage({ 
+        type: 'START', 
+        payload: { endTime: endTimeRef.current } 
+      });
+    } else {
+      workerRef.current?.postMessage({ type: 'STOP' });
+    }
+  }, [isActive]);
 
   const switchMode = useCallback((newMode: TimerMode) => {
     clearAutoReset();
     setIsActive(false);
+    toggleSilentAudio(false); // Ensure audio stops on manual switch
     setMode(newMode);
     
     const newDuration = config[newMode].duration;
@@ -216,8 +223,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
     clearAutoReset();
     
     if (timeLeft === 0) {
-        // Restart current mode if manually toggled after finish (before auto-switch)
-        // or if manually reset to 0
+        // Restart current mode
         const duration = config[mode].duration;
         setTimeLeft(duration);
         setIsActive(true);
@@ -225,6 +231,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
         
         triggerHaptic('medium');
         initAudio();
+        toggleSilentAudio(true); // Start background audio hack
         requestNotificationPermission();
         persistSession(mode, true, endTimeRef.current, duration);
         return;
@@ -237,6 +244,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       
       triggerHaptic('medium');
       initAudio();
+      toggleSilentAudio(true); // Start background audio hack
       requestNotificationPermission();
       persistSession(mode, true, endTimeRef.current, timeLeft);
     } else {
@@ -244,6 +252,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       setIsActive(false);
       endTimeRef.current = null;
       
+      toggleSilentAudio(false); // Stop background audio
       triggerHaptic('soft');
       persistSession(mode, false, null, timeLeft);
     }
@@ -252,6 +261,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
   const resetTimer = useCallback(() => {
     clearAutoReset();
     setIsActive(false);
+    toggleSilentAudio(false);
     
     const duration = config[mode].duration;
     setTimeLeft(duration);
@@ -262,8 +272,41 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
   }, [mode, config, persistSession]);
 
   useEffect(() => {
-      return () => clearAutoReset();
+      return () => {
+          clearAutoReset();
+          toggleSilentAudio(false);
+      };
   }, []);
+
+  // Track the previous config to detect duration changes
+  const lastConfigRef = useRef({ mode, duration: config[mode].duration });
+
+  useEffect(() => {
+    const last = lastConfigRef.current;
+    const currentDuration = config[mode].duration;
+
+    // Check if configuration for the current mode has changed
+    if (mode === last.mode && currentDuration !== last.duration) {
+       // Config changed.
+       if (!isActive) {
+         // If timer is not running, we decide whether to update the displayed time.
+         // We update if the timer was at the initial state (full duration of previous setting)
+         // or if it was finished (0).
+         // If it was paused in the middle, we treat it as "started" and preserve the session.
+         const wasAtFullDuration = Math.abs(timeLeft - last.duration) < 1;
+         const wasFinished = timeLeft === 0;
+
+         if (wasAtFullDuration || wasFinished) {
+            setTimeLeft(currentDuration);
+            // Also update persistence so a reload keeps the new setting
+            persistSession(mode, false, null, currentDuration);
+         }
+       }
+    }
+
+    // Update ref
+    lastConfigRef.current = { mode, duration: currentDuration };
+  }, [config, mode, isActive, timeLeft, persistSession]);
 
   const duration = config[mode]?.duration || 1500;
   const progress = 1 - timeLeft / duration;
