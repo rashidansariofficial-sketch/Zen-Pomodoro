@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { TimerMode, TimerConfig } from '../types';
 import { triggerHaptic } from '../utils/haptics';
 import { playTimerCompleteSound, initAudio } from '../utils/sound';
+import { requestNotificationPermission, sendNotification } from '../utils/notifications';
 
 const SESSION_KEY = 'zen-session-v1';
 
@@ -121,6 +122,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
         
         triggerHaptic('medium');
         initAudio();
+        requestNotificationPermission(); // Ask for permission on interaction
         persistSession(mode, true, endTimeRef.current, duration);
         return;
     }
@@ -132,6 +134,7 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
       
       triggerHaptic('medium');
       initAudio();
+      requestNotificationPermission(); // Ask for permission on interaction
       persistSession(mode, true, endTimeRef.current, timeLeft);
     } else {
       // Pause
@@ -184,7 +187,12 @@ export const usePomodoro = (config: Record<TimerMode, TimerConfig>) => {
           endTimeRef.current = null;
           
           triggerHaptic('alarm');
-          playTimerCompleteSound(); 
+          playTimerCompleteSound();
+
+          // Send notification if app is hidden (background)
+          if (document.visibilityState === 'hidden') {
+            sendNotification('Timer Complete', `${config[mode].label} session finished.`);
+          }
           
           // Clear session active state but keep mode
           persistSession(mode, false, null, 0);
